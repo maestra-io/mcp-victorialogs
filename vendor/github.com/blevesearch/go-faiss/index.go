@@ -33,6 +33,15 @@ type Index interface {
 	// Ntotal returns the number of indexed vectors.
 	Ntotal() int64
 
+	// set the direct map type for IVF indexes.
+	// 0 for No Map
+	// 1 for Array
+	// 2 for Hash
+	SetDirectMap(maptype int) error
+
+	// set the number of probes for IVF indexes
+	SetNProbe(nprobe int32)
+
 	// MetricType returns the metric type of the index.
 	MetricType() int
 
@@ -48,6 +57,15 @@ type Index interface {
 	// Returns true if the index is an IVF index.
 	IsIVFIndex() bool
 
+	// Returns true if the index is a scalar quantization (SQ) index.
+	IsSQIndex() bool
+
+	// Returns true if the index has RaBitQ
+	HasRaBitQ() bool
+
+	// Returns the IVF parameters nprobe and nlist for IVF indexes.
+	IVFParams() (nprobe, nlist int)
+
 	// Applicable only to IVF indexes: Returns a slice where each index represents
 	// a cluster (list) ID and the value is the count of selected vectors belonging
 	// to that cluster. Only vectors specified by the given Selector are considered.
@@ -62,16 +80,18 @@ type Index interface {
 	// their vectors in chosen order (descending or ascending)
 	ObtainKCentroidCardinalitiesFromIVFIndex(limit int, descending bool) ([]uint64, [][]float32, error)
 
+	// fetch centroid count
+	Nlist() int
+
 	// Search queries the index with the vectors in x.
 	// Returns the IDs of the k nearest neighbors for each query vector and the
 	// corresponding distances.
 	Search(x []float32, k int64) (distances []float32, labels []int64, err error)
 
-	SearchWithoutIDs(x []float32, k int64, exclude Selector, params json.RawMessage) (distances []float32,
-		labels []int64, err error)
-
-	SearchWithIDs(x []float32, k int64, include Selector, params json.RawMessage) (distances []float32,
-		labels []int64, err error)
+	// SearchWithOptions performs a search with additional optional constraints.
+	// - Selector can be used to restrict the search to a subset of the indexed vectors based on their IDs.
+	// - params is a JSON object that can contain additional search parameters specific to the index type, such as IVF search parameters.
+	SearchWithOptions(x []float32, k int64, sel Selector, params json.RawMessage) (distances []float32, labels []int64, err error)
 
 	// Applicable only to IVF indexes: Search clusters whose IDs are in eligibleCentroidIDs
 	SearchClustersFromIVFIndex(eligibleCentroidIDs []int64, centroidDis []float32, centroidsToProbe int,
@@ -87,6 +107,9 @@ type Index interface {
 	// Returns all vectors with distance < radius.
 	RangeSearch(x []float32, radius float32) (*RangeSearchResult, error)
 
+	// DistCompute computes the distance between the query vector and the vectors specified by ids.
+	DistCompute(x []float32, labels []int64) ([]float32, error)
+
 	// Reset removes all vectors from the index.
 	Reset() error
 
@@ -101,6 +124,10 @@ type Index interface {
 	Size() uint64
 
 	cPtr() *C.FaissIndex
+
+	// set the quantizers from a source index into this index, applicable only
+	// for IVF indexes
+	SetQuantizers(source Index) error
 }
 
 type faissIndex struct {
@@ -152,7 +179,7 @@ func (idx *faissIndex) ObtainClusterVectorCountsFromIVFIndex(includedVectors Sel
 	// Applicable only to IVF indexes
 	ivfPtr := C.faiss_IndexIVF_cast(idx.cPtr())
 	if ivfPtr == nil {
-		return nil, fmt.Errorf("index is not of ivf type")
+		return nil, errNotIVFIndex
 	}
 	// Creating a slice to hold the count of vectors per cluster
 	// Since we have nlist clusters, we create a slice of size nlist
@@ -167,7 +194,7 @@ func (idx *faissIndex) ObtainClusterVectorCountsFromIVFIndex(includedVectors Sel
 	// Calling the C function to populate listCount
 	// with the count of vectors per cluster, considering only
 	// the vectors specified in the include selector.
-	if c := C.faiss_ivf_list_vector_count(
+	if c := C.faiss_IndexIVF_list_vector_count(
 		ivfPtr,
 		(*C.idx_t)(unsafe.Pointer(&listCount[0])),
 		C.size_t(nlist),
@@ -185,12 +212,16 @@ func (idx *faissIndex) IsIVFIndex() bool {
 	return true
 }
 
+func (idx *faissIndex) HasRaBitQ() bool {
+	return C.faiss_IndexIVF_has_RaBitQ(idx.idx) == 0
+}
+
 func (idx *faissIndex) ObtainClustersWithDistancesFromIVFIndex(x []float32, includedCentroids Selector, numCentroids int64) (
 	[]int64, []float32, error) {
 	// Applicable only to IVF indexes
 	ivfPtr := C.faiss_IndexIVF_cast(idx.cPtr())
 	if ivfPtr == nil {
-		return nil, nil, fmt.Errorf("index is not of ivf type")
+		return nil, nil, errNotIVFIndex
 	}
 	params, err := NewStandardSearchParams(includedCentroids)
 	if err != nil {
@@ -204,7 +235,7 @@ func (idx *faissIndex) ObtainClustersWithDistancesFromIVFIndex(x []float32, incl
 
 	n := len(x) / idx.D()
 
-	if c := C.faiss_Search_closest_eligible_centroids(
+	if c := C.faiss_IndexIVF_search_closest_eligible_centroids(
 		ivfPtr,
 		(C.idx_t)(n),
 		(*C.float)(&x[0]),
@@ -284,13 +315,20 @@ func getIndicesOfKCentroidCardinalities(cardinalities []C.size_t, k int, descend
 
 	return indices[:k]
 }
+func (idx *faissIndex) Nlist() int {
+	ivfPtr := C.faiss_IndexIVF_cast(idx.cPtr())
+	if ivfPtr == nil {
+		return 0
+	}
+	return int(C.faiss_IndexIVF_nlist(idx.idx))
+}
 
 func (idx *faissIndex) SearchClustersFromIVFIndex(eligibleCentroidIDs []int64, centroidDis []float32, centroidsToProbe int,
 	x []float32, k int64, include Selector, params json.RawMessage) ([]float32, []int64, error) {
 	// Applicable only to IVF indexes
 	ivfPtr := C.faiss_IndexIVF_cast(idx.cPtr())
 	if ivfPtr == nil {
-		return nil, nil, fmt.Errorf("index is not of ivf type")
+		return nil, nil, errNotIVFIndex
 	}
 	// If no include selector is provided, we have no results to return.
 	// return an error indicating that the SearchClustersFromIVFIndex requires a valid selector.
@@ -358,6 +396,9 @@ func (idx *faissIndex) AddWithIDs(x []float32, xids []int64) error {
 	return nil
 }
 
+// Always use SearchWithOptions for indexes involving RaBitQ, as
+// simple Search is highly unoptimized for RaBitQ indexes and
+// will not leverage the quantizer for search.
 func (idx *faissIndex) Search(x []float32, k int64) (
 	distances []float32, labels []int64, err error,
 ) {
@@ -378,46 +419,11 @@ func (idx *faissIndex) Search(x []float32, k int64) (
 	return
 }
 
-// SearchWithoutIDs performs a search excluding the IDs specified in the exclude selector.
-func (idx *faissIndex) SearchWithoutIDs(x []float32, k int64, exclude Selector, params json.RawMessage) (
-	distances []float32, labels []int64, err error,
-) {
-	// If no exclude selector and no additional parameters are provided,
-	// perform a standard search.
-	if params == nil && exclude == nil {
+func (idx *faissIndex) SearchWithOptions(x []float32, k int64, sel Selector, params json.RawMessage) ([]float32, []int64, error) {
+	if sel == nil && params == nil && !idx.HasRaBitQ() {
 		return idx.Search(x, k)
 	}
-	// Create search parameters with the exclude selector.
-	searchParams, err := NewSearchParams(idx, params, exclude, nil)
-	if err != nil {
-		return nil, nil, err
-	}
-	// cleanup the searchParams after use
-	defer searchParams.Delete()
-	// Perform the search with the specified parameters.
-	distances, labels, err = idx.searchWithParams(x, k, searchParams.sp)
-	return
-}
-
-// SearchWithIDs performs a search including only the IDs specified in the include selector.
-func (idx *faissIndex) SearchWithIDs(x []float32, k int64, include Selector, params json.RawMessage) (
-	distances []float32, labels []int64, err error,
-) {
-	// If no include selector is provided, we have no results to return.
-	// return an error indicating that the SearchWithIDs requires a valid selector.
-	if include == nil {
-		return nil, nil, fmt.Errorf("SearchWithIDs requires a valid include selector")
-	}
-	// Create search parameters with the include selector.
-	searchParams, err := NewSearchParams(idx, params, include, nil)
-	if err != nil {
-		return nil, nil, err
-	}
-	// cleanup the searchParams after use
-	defer searchParams.Delete()
-	// Perform the search with the specified parameters.
-	distances, labels, err = idx.searchWithParams(x, k, searchParams.sp)
-	return
+	return idx.searchWithOptions(x, k, sel, params)
 }
 
 func (idx *faissIndex) Reconstruct(key int64) (recons []float32, err error) {
@@ -448,22 +454,17 @@ func (idx *faissIndex) ReconstructBatch(keys []int64, recons []float32) ([]float
 	return recons, err
 }
 
-func (i *IndexImpl) MergeFrom(other Index, add_id int64) error {
-	if impl, ok := other.(*IndexImpl); ok {
-		return i.Index.MergeFrom(impl.Index, add_id)
-	}
-	return fmt.Errorf("merge not support")
-}
-
 func (idx *faissIndex) MergeFrom(other Index, add_id int64) (err error) {
-	otherIdx, ok := other.(*faissIndex)
-	if !ok {
-		return fmt.Errorf("merge api not supported")
+	// currrently we support the mergeFrom API only for IVF and SQ indexes
+	// todo: support on Flat index as well
+	if !(idx.IsIVFIndex() && other.IsIVFIndex()) &&
+		!(idx.IsSQIndex() && other.IsSQIndex()) {
+		return fmt.Errorf("faissIndex MergeFrom err: %w", errMergeFromNotSupported)
 	}
 
 	if c := C.faiss_Index_merge_from(
-		idx.idx,
-		otherIdx.idx,
+		idx.cPtr(),
+		other.cPtr(),
 		(C.idx_t)(add_id),
 	); c != 0 {
 		err = getLastError()
@@ -492,6 +493,16 @@ func (idx *faissIndex) RangeSearch(x []float32, radius float32) (
 	return &RangeSearchResult{rsr}, nil
 }
 
+func (idx *faissIndex) DistCompute(queryData []float32, ids []int64) ([]float32, error) {
+	distances := make([]float32, len(ids))
+	if c := C.faiss_Index_dist_compute(idx.idx, (*C.float)(&queryData[0]),
+		(*C.idx_t)(&ids[0]), (C.size_t)(len(ids)), (*C.float)(&distances[0])); c != 0 {
+		return nil, getLastError()
+	}
+
+	return distances, nil
+}
+
 func (idx *faissIndex) Reset() error {
 	if c := C.faiss_Index_reset(idx.idx); c != 0 {
 		return getLastError()
@@ -511,26 +522,30 @@ func (idx *faissIndex) Close() {
 	C.faiss_Index_free(idx.idx)
 }
 
-func (idx *faissIndex) searchWithParams(x []float32, k int64, searchParams *C.FaissSearchParameters) (
-	distances []float32, labels []int64, err error,
-) {
+func (idx *faissIndex) searchWithOptions(x []float32, k int64, sel Selector, params json.RawMessage) ([]float32, []int64, error) {
+	// Build a search params object to contain either the selector, the additional params, or both.
+	searchParams, err := NewSearchParams(idx, params, sel, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer searchParams.Delete()
+
 	n := len(x) / idx.D()
-	distances = make([]float32, int64(n)*k)
-	labels = make([]int64, int64(n)*k)
+	distances := make([]float32, int64(n)*k)
+	labels := make([]int64, int64(n)*k)
 
 	if c := C.faiss_Index_search_with_params(
 		idx.idx,
 		C.idx_t(n),
 		(*C.float)(&x[0]),
 		C.idx_t(k),
-		searchParams,
+		searchParams.sp,
 		(*C.float)(&distances[0]),
 		(*C.idx_t)(&labels[0]),
 	); c != 0 {
-		err = getLastError()
+		return nil, nil, getLastError()
 	}
-
-	return
+	return distances, labels, nil
 }
 
 // -----------------------------------------------------------------------------
