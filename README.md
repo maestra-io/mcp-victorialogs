@@ -461,6 +461,7 @@ Here's a list of available tools:
 | `stream_field_values` | List of stream field values for the query             |
 | `stream_ids`         | List of stream IDs for the query                      |
 | `streams`            | List of streams for the query                         |
+| `list_contours`      | List available contours (clusters) + selection guidance (Maestra fork) |
 
 ### Prompts
 
