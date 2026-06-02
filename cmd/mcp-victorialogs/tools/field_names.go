@@ -14,6 +14,7 @@ const toolNameFieldNames = "field_names"
 
 var (
 	toolFieldNames = mcp.NewTool(toolNameFieldNames,
+		WithContour(),
 		mcp.WithDescription("Get field names from results of the given <query> on the given [<start> ... <end>] time range. The response also contains the number of log results per every field name. This tool uses `/select/logsql/field_names` endpoint of VictoriaLogs API."),
 		mcp.WithToolAnnotation(mcp.ToolAnnotation{
 			Title:           "List of field names for the query",

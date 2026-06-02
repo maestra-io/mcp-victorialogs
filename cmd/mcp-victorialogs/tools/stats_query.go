@@ -14,6 +14,7 @@ const toolNameStatsQuery = "stats_query"
 
 var (
 	toolStatsQuery = mcp.NewTool(toolNameStatsQuery,
+		WithContour(),
 		mcp.WithDescription("Log stats for the given query at the given timestamp (time) in the format compatible with Prometheus querying API. This tool uses `/select/logsql/stats_query` endpoint of VictoriaLogs API."),
 		mcp.WithToolAnnotation(mcp.ToolAnnotation{
 			Title:           "Querying log stats",

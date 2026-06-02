@@ -89,12 +89,38 @@ func CreateAdminRequest(ctx context.Context, cfg *config.Config, tcr mcp.CallToo
 	return req, nil
 }
 
-func getRootURL(_ context.Context, cfg *config.Config, _ mcp.CallToolRequest, path ...string) (string, error) {
-	return cfg.EntryPointURL().JoinPath(path...).String(), nil
+func getRootURL(_ context.Context, cfg *config.Config, tcr mcp.CallToolRequest, path ...string) (string, error) {
+	base, err := cfg.EntryPointURLForContour(getContour(tcr))
+	if err != nil {
+		return "", err
+	}
+	return base.JoinPath(path...).String(), nil
 }
 
-func getSelectURL(_ context.Context, cfg *config.Config, _ mcp.CallToolRequest, path ...string) (string, error) {
-	return cfg.EntryPointURL().JoinPath("select", "logsql").JoinPath(path...).String(), nil
+func getSelectURL(_ context.Context, cfg *config.Config, tcr mcp.CallToolRequest, path ...string) (string, error) {
+	base, err := cfg.EntryPointURLForContour(getContour(tcr))
+	if err != nil {
+		return "", err
+	}
+	return base.JoinPath("select", "logsql").JoinPath(path...).String(), nil
+}
+
+// getContour reads the optional "contour" tool argument. Empty string means the
+// default contour (resolved in config.EntryPointURLForContour).
+func getContour(tcr mcp.CallToolRequest) string {
+	contour, _ := GetToolReqParam[string](tcr, "contour", false)
+	return contour
+}
+
+// WithContour returns the shared optional "contour" tool option. It lets a
+// single MCP server route a tool call to one of several VictoriaLogs instances
+// (contours/clusters) configured via VL_CONTOURS. Omitting it uses the default
+// contour.
+func WithContour() mcp.ToolOption {
+	return mcp.WithString("contour",
+		mcp.Title("Contour / cluster"),
+		mcp.Description("Which logs contour (VictoriaLogs cluster) to query, e.g. infra, omega, omicron. Omit to use the default contour."),
+	)
 }
 
 func GetTextBodyForRequest(req *http.Request, _ *config.Config) *mcp.CallToolResult {
