@@ -14,6 +14,7 @@ const toolNameHits = "hits"
 
 var (
 	toolHits = mcp.NewTool(toolNameHits,
+		WithContour(),
 		mcp.WithDescription("The number of matching log entries for the given <query> on the given [<start> ... <end>] time range grouped by <step> buckets. The returned results are sorted by time. This tool uses `/select/logsql/hits` endpoint of VictoriaLogs API."),
 		mcp.WithToolAnnotation(mcp.ToolAnnotation{
 			Title:           "Log entries hits",

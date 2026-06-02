@@ -6,7 +6,33 @@
 ![X](https://img.shields.io/twitter/follow/VictoriaMetrics?style=flat&label=Follow&color=black&logo=x&labelColor=black&link=https%3A%2F%2Fx.com%2FVictoriaMetrics)
 ![Reddit](https://img.shields.io/reddit/subreddit-subscribers/VictoriaMetrics?style=flat&label=Join&labelColor=red&logoColor=white&logo=reddit&link=https%3A%2F%2Fwww.reddit.com%2Fr%2FVictoriaMetrics)
 
+> **Maestra fork.** This fork (`maestra-io/mcp-victorialogs`) adds **multi-contour
+> support** on top of upstream so a single MCP server can query several VictoriaLogs
+> instances (clusters/contours). Every data tool gets an optional `contour` argument;
+> routing is configured via env vars. Built and pushed to the maestra ECR by
+> `.github/workflows/build-and-push-ecr.yml`. See
+> [Multi-contour support](#multi-contour-support-maestra-fork) below.
+
 The implementation of [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for [VictoriaLogs](https://docs.victoriametrics.com/victorialogs/).
+
+## Multi-contour support (Maestra fork)
+
+A single server instance can route tool calls to several VictoriaLogs instances:
+
+- `VL_INSTANCE_ENTRYPOINT` — the default contour's entrypoint (unchanged; still required).
+- `VL_DEFAULT_CONTOUR` — name for the `VL_INSTANCE_ENTRYPOINT` contour (default: `default`). Used when a tool call omits `contour`.
+- `VL_CONTOURS` — comma-separated `name=url` pairs adding more contours, e.g.
+  `omega=http://127.0.0.1:9471,omicron=http://127.0.0.1:9472`.
+
+Every data tool then accepts an optional `contour` argument (e.g. `infra`, `omega`,
+`omicron`). Omitting it uses `VL_DEFAULT_CONTOUR`; an unknown value returns an error
+listing the available contours. The `documentation` tool has no `contour` (it serves
+embedded docs, not a VictoriaLogs instance). Single-instance setups that don't set
+`VL_CONTOURS`/`VL_DEFAULT_CONTOUR` behave exactly as upstream.
+
+In the Maestra Archestra deployment, the remote contours are reached through a `tbot`
+sidecar that opens Teleport application tunnels to the per-cluster VictoriaLogs apps
+on `127.0.0.1` ports.
 
 This provides access to your VictoriaLogs instance and seamless integration with [VictoriaLogs APIs](https://docs.victoriametrics.com/victorialogs/querying/#http-api) and [documentation](https://docs.victoriametrics.com/victorialogs/).
 It can give you a comprehensive interface for logs, observability, and debugging tasks related to your VictoriaLogs instances, enable advanced automation and interaction capabilities for engineers and tools.

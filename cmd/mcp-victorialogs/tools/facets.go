@@ -14,6 +14,7 @@ const toolNameFacets = "facets"
 
 var (
 	toolFacets = mcp.NewTool(toolNameFacets,
+		WithContour(),
 		mcp.WithDescription("The most frequent values per each log field seen in the logs returned by the given <query> on the given [<start> ... <end>] time range. This tool uses `/select/logsql/facets` endpoint of VictoriaLogs API."),
 		mcp.WithToolAnnotation(mcp.ToolAnnotation{
 			Title:           "Most frequent values",

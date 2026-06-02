@@ -14,6 +14,7 @@ const toolNameFieldValues = "field_values"
 
 var (
 	toolFieldValues = mcp.NewTool(toolNameFieldValues,
+		WithContour(),
 		mcp.WithDescription("Get unique values for the given <fieldName> field from results of the given <query> on the given [<start> ... <end>] time range. The response also contains the number of log results per every field value. This tool uses `/select/logsql/field_values` endpoint of VictoriaLogs API."),
 		mcp.WithToolAnnotation(mcp.ToolAnnotation{
 			Title:           "List of field values for the query",

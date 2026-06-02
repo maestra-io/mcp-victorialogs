@@ -14,6 +14,7 @@ const toolNameQuery = "query"
 
 var (
 	toolQuery = mcp.NewTool(toolNameQuery,
+		WithContour(),
 		mcp.WithDescription("Executes LogsQL query expression to search log entries. This tool uses `/select/logsql/query` endpoint of VictoriaLogs API."),
 		mcp.WithToolAnnotation(mcp.ToolAnnotation{
 			Title:           "Query logs",
