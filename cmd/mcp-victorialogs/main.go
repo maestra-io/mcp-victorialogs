@@ -101,6 +101,7 @@ Try not to second guess information - if you don't know something or lack inform
 	tools.RegisterToolStreamFieldNames(s, c)
 	tools.RegisterToolStreamFieldValues(s, c)
 	tools.RegisterToolDocumentation(s, c)
+	tools.RegisterToolContours(s, c)
 
 	// Registering resources (only if documentation tool is not disabled)
 	if !c.IsToolDisabled(tools.ToolNameDocumentation) {

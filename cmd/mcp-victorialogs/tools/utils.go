@@ -128,7 +128,7 @@ func getContour(tcr mcp.CallToolRequest) (string, error) {
 func WithContour() mcp.ToolOption {
 	return mcp.WithString("contour",
 		mcp.Title("Contour / cluster"),
-		mcp.Description("Which logs contour (VictoriaLogs cluster) to query, e.g. infra, omega, omicron. Omit to use the default contour."),
+		mcp.Description("Which logs contour (VictoriaLogs cluster) to query, e.g. infra, omega, omicron. First call the list_contours tool to determine the correct contour for the request. Omit to use the default contour."),
 	)
 }
 

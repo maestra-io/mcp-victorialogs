@@ -24,6 +24,10 @@ A single server instance can route tool calls to several VictoriaLogs instances:
 - `VL_CONTOURS` — comma-separated `name=url` pairs adding more contours, e.g.
   `omega=http://127.0.0.1:9471,omicron=http://127.0.0.1:9472`.
 
+The `list_contours` tool reports the configured contours, the default, and free-text
+selection guidance set via `VL_CONTOUR_SELECTION_HINT`. Agents should call it first to
+decide which `contour` to pass.
+
 Every data tool then accepts an optional `contour` argument (e.g. `infra`, `omega`,
 `omicron`). Omitting it uses `VL_DEFAULT_CONTOUR`; an unknown value returns an error
 listing the available contours. The `documentation` tool has no `contour` (it serves

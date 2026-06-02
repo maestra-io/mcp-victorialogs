@@ -31,6 +31,9 @@ type Config struct {
 	// defaultContour, so single-instance setups keep working unchanged.
 	contours       map[string]*url.URL
 	defaultContour string
+	// contourSelectionHint is free-text guidance returned by the list_contours
+	// tool to help pick the right contour (set via VL_CONTOUR_SELECTION_HINT).
+	contourSelectionHint string
 
 	// Logging configuration
 	logFormat string
@@ -187,6 +190,8 @@ func InitConfig() (*Config, error) {
 		}
 	}
 
+	result.contourSelectionHint = strings.TrimSpace(os.Getenv("VL_CONTOUR_SELECTION_HINT"))
+
 	return result, nil
 }
 
@@ -241,6 +246,12 @@ func (c *Config) Contours() []string {
 // DefaultContour returns the contour name used when a tool call omits "contour".
 func (c *Config) DefaultContour() string {
 	return c.defaultContour
+}
+
+// ContourSelectionHint returns free-text guidance on how to choose a contour,
+// surfaced by the list_contours tool (set via VL_CONTOUR_SELECTION_HINT).
+func (c *Config) ContourSelectionHint() string {
+	return c.contourSelectionHint
 }
 
 func (c *Config) IsToolDisabled(toolName string) bool {
