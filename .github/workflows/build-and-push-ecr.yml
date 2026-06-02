@@ -28,11 +28,17 @@ jobs:
       DOCKER_BUILDKIT: 1
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Get Teleport version
         id: tp-version
         run: |
           VERSION=$(curl -sf "https://${{ env.TELEPORT_FQDN }}/webapi/find" | jq -r '.auto_update.tools_version // .server_version')
+          if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
+            echo "::error::Failed to resolve Teleport version from /webapi/find"
+            exit 1
+          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Cache Teleport binaries

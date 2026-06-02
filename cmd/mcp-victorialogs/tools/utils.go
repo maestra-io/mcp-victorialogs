@@ -90,7 +90,11 @@ func CreateAdminRequest(ctx context.Context, cfg *config.Config, tcr mcp.CallToo
 }
 
 func getRootURL(_ context.Context, cfg *config.Config, tcr mcp.CallToolRequest, path ...string) (string, error) {
-	base, err := cfg.EntryPointURLForContour(getContour(tcr))
+	contour, err := getContour(tcr)
+	if err != nil {
+		return "", err
+	}
+	base, err := cfg.EntryPointURLForContour(contour)
 	if err != nil {
 		return "", err
 	}
@@ -98,7 +102,11 @@ func getRootURL(_ context.Context, cfg *config.Config, tcr mcp.CallToolRequest, 
 }
 
 func getSelectURL(_ context.Context, cfg *config.Config, tcr mcp.CallToolRequest, path ...string) (string, error) {
-	base, err := cfg.EntryPointURLForContour(getContour(tcr))
+	contour, err := getContour(tcr)
+	if err != nil {
+		return "", err
+	}
+	base, err := cfg.EntryPointURLForContour(contour)
 	if err != nil {
 		return "", err
 	}
@@ -106,10 +114,11 @@ func getSelectURL(_ context.Context, cfg *config.Config, tcr mcp.CallToolRequest
 }
 
 // getContour reads the optional "contour" tool argument. Empty string means the
-// default contour (resolved in config.EntryPointURLForContour).
-func getContour(tcr mcp.CallToolRequest) string {
-	contour, _ := GetToolReqParam[string](tcr, "contour", false)
-	return contour
+// default contour (resolved in config.EntryPointURLForContour). A non-string
+// argument is surfaced as an error rather than silently falling back, matching
+// the explicit "unknown contour" error for unrecognized names.
+func getContour(tcr mcp.CallToolRequest) (string, error) {
+	return GetToolReqParam[string](tcr, "contour", false)
 }
 
 // WithContour returns the shared optional "contour" tool option. It lets a
