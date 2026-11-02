@@ -122,7 +122,7 @@ jobs:
           provenance: false
           push: true
           cache-from: type=gha,scope=mcp-victorialogs
-          cache-to: type=gha,mode=max,scope=mcp-victorialogs
+          cache-to: type=gha,mode=max,scope=mcp-victorialogs,ignore-error=true
           tags: |
             ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.release-number.outputs.release-number }}
             ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
