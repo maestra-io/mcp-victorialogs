@@ -6,17 +6,26 @@ FROM golang:1.26-alpine AS builder
 WORKDIR /app
 
 # Install Git for potential dependencies and ca-certificates
+# BASE_REFRESH (CI passes the ISO week): the layer cache would otherwise serve
+# this stage forever, without apk/OS security updates. A new value rebuilds it
+# on the next build.
+ARG BASE_REFRESH
 RUN apk add --no-cache git ca-certificates nodejs npm
 
-# Copy source
+# Dependencies before the sources, so a source-only change reuses the cached
+# go mod download / npm install layers.
 COPY go.mod go.sum ./
+RUN go mod download
+COPY web/package.json web/package-lock.json ./web/
+RUN cd web && npm install
+
+# Copy source
 COPY . .
 
 # Build UI
-RUN cd web && npm install && npm run build
+RUN cd web && npm run build
 
-# Download dependencies and build
-RUN go mod download
+# Build
 RUN go build -o mcp-victorialogs ./cmd/mcp-victorialogs
 
 # Runtime stage
@@ -24,6 +33,7 @@ FROM alpine:latest
 WORKDIR /app
 
 # Install ca-certificates for HTTPS
+ARG BASE_REFRESH
 RUN apk add --no-cache ca-certificates
 
 # Copy binary from builder
