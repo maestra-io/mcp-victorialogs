@@ -15,7 +15,10 @@ RUN apk add --no-cache git ca-certificates nodejs npm
 # Dependencies before the sources, so a source-only change reuses the cached
 # go mod download / npm install layers.
 COPY go.mod go.sum ./
-RUN go mod download
+# Modules through nora (packages.maestra.io, 3-day hold, issues-maestra#1649): CI passes
+# its token as the PRIVATE_PACKAGES_TOKEN secret; a local build keeps the default proxy.
+RUN --mount=type=secret,id=PRIVATE_PACKAGES_TOKEN,env=NORA_TOKEN \
+    GOPROXY="${NORA_TOKEN:+https://token:${NORA_TOKEN}@packages.maestra.io/go}" go mod download
 COPY web/package.json web/package-lock.json ./web/
 RUN cd web && npm install
 
