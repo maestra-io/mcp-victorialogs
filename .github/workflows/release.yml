@@ -92,9 +92,20 @@ jobs:
           echo "Final server.json contents:"
           cat server.json
 
+      # Pinned version + sha256, fetched through nora's GitHub Releases proxy
+      # (3-day min release age, first-seen quarantine), never releases/latest.
       - name: Install MCP Publisher
+        env:
+          MCP_PUBLISHER_VERSION: v1.8.7
+          MCP_PUBLISHER_SHA256: 00b21004149a4ce66f0782508ae4a2bce67d1bea395a8da0bd8028159fb59579
         run: |
-          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+          set -euo pipefail
+          oidc="$(curl -fsS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=packages.maestra.io" | jq -r .value)"
+          echo "::add-mask::${oidc}"
+          printf 'user = "oidc:%s"\n' "${oidc}" | curl -fsSL -K - -o mcp-publisher.tar.gz \
+            "https://packages.maestra.io/github/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz"
+          echo "${MCP_PUBLISHER_SHA256}  mcp-publisher.tar.gz" | sha256sum -c -
+          tar xzf mcp-publisher.tar.gz mcp-publisher
 
       - name: Login to MCP Registry
         run: ./mcp-publisher login github-oidc
