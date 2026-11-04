@@ -147,7 +147,9 @@ For building binary from source code you can use the following approach:
 - Build image from cloned source code:
 
   ```bash
-  docker build -t mcp-victorialogs .
+  # apk runs through nora: a packages.maestra.io token is required
+  export PRIVATE_PACKAGES_TOKEN=<token>
+  docker build --secret id=PRIVATE_PACKAGES_TOKEN,env=PRIVATE_PACKAGES_TOKEN -t mcp-victorialogs .
   # after that you can use docker image mcp-victorialogs for running or pushing
   ```
 
