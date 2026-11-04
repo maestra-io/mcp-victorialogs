@@ -10,7 +10,8 @@ WORKDIR /app
 # this stage forever, without apk/OS security updates. A new value rebuilds it
 # on the next build.
 ARG BASE_REFRESH
-RUN apk add --no-cache git ca-certificates nodejs npm
+RUN --mount=type=secret,id=PRIVATE_PACKAGES_TOKEN,required=true --mount=type=bind,from=public.ecr.aws/g5f9s8a4/nora-apk:1.0.0@sha256:55df38687c301e6fefa230dc1c71a8841618214cc549ade71be740b25822a00e,target=/nora-apk \
+    /nora-apk/nora-apk add --no-cache git ca-certificates nodejs npm
 
 # Dependencies before the sources, so a source-only change reuses the cached
 # go mod download / npm install layers.
@@ -37,7 +38,8 @@ WORKDIR /app
 
 # Install ca-certificates for HTTPS
 ARG BASE_REFRESH
-RUN apk add --no-cache ca-certificates
+RUN --mount=type=secret,id=PRIVATE_PACKAGES_TOKEN,required=true --mount=type=bind,from=public.ecr.aws/g5f9s8a4/nora-apk:1.0.0@sha256:55df38687c301e6fefa230dc1c71a8841618214cc549ade71be740b25822a00e,target=/nora-apk \
+    /nora-apk/nora-apk add --no-cache ca-certificates
 
 # Copy binary from builder
 COPY --from=builder /app/mcp-victorialogs /usr/local/bin/mcp-victorialogs
