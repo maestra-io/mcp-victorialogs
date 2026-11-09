@@ -2,7 +2,7 @@
 # syntax=docker/dockerfile:1
 
 # Build stage
-FROM golang:1.26-alpine AS builder
+FROM packages.maestra.io/docker-hub/library/golang:1.26-alpine@sha256:87c65a688975c0b1d4585d204874c45ca78354670e3a5f11368c5a492303d696 AS builder
 WORKDIR /app
 
 # Install Git for potential dependencies and ca-certificates
@@ -21,7 +21,10 @@ COPY go.mod go.sum ./
 RUN --mount=type=secret,id=PRIVATE_PACKAGES_TOKEN,env=NORA_TOKEN \
     GOPROXY="${NORA_TOKEN:+https://token:${NORA_TOKEN}@packages.maestra.io/go}" go mod download
 COPY web/package.json web/package-lock.json ./web/
-RUN cd web && npm install
+# npm packages through nora as well (same 3-day hold).
+RUN --mount=type=secret,id=PRIVATE_PACKAGES_TOKEN,required=true --mount=type=tmpfs,target=/npm-auth \
+    echo "//packages.maestra.io/npm/:_authToken=$(cat /run/secrets/PRIVATE_PACKAGES_TOKEN)" > /npm-auth/npmrc && \
+    cd web && NPM_CONFIG_USERCONFIG=/npm-auth/npmrc NPM_CONFIG_REGISTRY=https://packages.maestra.io/npm/ npm install
 
 # Copy source
 COPY . .
@@ -33,7 +36,7 @@ RUN cd web && npm run build
 RUN go build -o mcp-victorialogs ./cmd/mcp-victorialogs
 
 # Runtime stage
-FROM alpine:latest
+FROM packages.maestra.io/docker-hub/library/alpine:latest@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
 WORKDIR /app
 
 # Install ca-certificates for HTTPS
