@@ -1,4 +1,5 @@
-FROM alpine:3.23
+# Base image through nora (packages.maestra.io, 3-day hold, issues-maestra#1649).
+FROM packages.maestra.io/docker-hub/library/alpine:3.23@sha256:469c9ea410b9215eaee7976ba6c0639039b444be8e5d638f7abbada189971eb2
 RUN addgroup -g 1000 -S mcp && adduser -u 1000 -S mcp -G mcp
 ARG TARGETPLATFORM
 COPY --chown=mcp:mcp $TARGETPLATFORM/mcp-victorialogs /usr/local/bin/mcp-victorialogs
