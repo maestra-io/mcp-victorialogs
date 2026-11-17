@@ -68,6 +68,9 @@ func main() {
 	s := server.NewMCPServer(
 		"VictoriaLogs",
 		fmt.Sprintf("v%s (date: %s)", version, date),
+		// First middleware is outermost: the tool-call record also covers a
+		// panic that WithRecovery turns into an error.
+		server.WithToolHandlerMiddleware(tools.ReasonMiddleware),
 		server.WithRecovery(),
 		server.WithLogging(),
 		server.WithToolCapabilities(true),
@@ -102,6 +105,7 @@ Try not to second guess information - if you don't know something or lack inform
 	tools.RegisterToolStreamFieldValues(s, c)
 	tools.RegisterToolDocumentation(s, c)
 	tools.RegisterToolContours(s, c)
+	tools.AddReasonToAllTools(s)
 
 	// Registering resources (only if documentation tool is not disabled)
 	if !c.IsToolDisabled(tools.ToolNameDocumentation) {
