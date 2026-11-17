@@ -145,6 +145,7 @@ func GetTextBodyForRequest(req *http.Request, cfg *config.Config) *mcp.CallToolR
 		defer cancel()
 		req = req.WithContext(ctx)
 	}
+	start := time.Now()
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		if d > 0 && errors.Is(err, context.DeadlineExceeded) {
@@ -163,8 +164,9 @@ func GetTextBodyForRequest(req *http.Request, cfg *config.Config) *mcp.CallToolR
 	if resp.StatusCode != http.StatusOK {
 		// vmauth answers 502 "all the N backends ... are unavailable" when every
 		// backend dropped the connection, which is how VictoriaLogs ends a
-		// timed-out non-query select.
-		if d > 0 && resp.StatusCode == http.StatusBadGateway && strings.Contains(string(body), "backends") {
+		// timed-out non-query select; only past the timeout is it a timeout,
+		// an early one is a backend outage and stays as is.
+		if d > 0 && resp.StatusCode == http.StatusBadGateway && strings.Contains(string(body), "backends") && time.Since(start) >= d {
 			return queryTimeoutError(d, string(body))
 		}
 		return mcp.NewToolResultError(fmt.Sprintf("unexpected response status code %v: %s", resp.StatusCode, string(body)))

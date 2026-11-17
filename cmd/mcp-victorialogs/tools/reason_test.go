@@ -134,6 +134,9 @@ func TestDefaultQueryTimeoutCutsRetry(t *testing.T) {
 	defer func() { queryTimeoutGrace = old }()
 	vl := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/select/logsql/hits" {
+			if r.URL.Query().Get("query") != "outage" {
+				time.Sleep(100 * time.Millisecond) // both backends dropped it at the timeout
+			}
 			w.WriteHeader(http.StatusBadGateway)
 			_, _ = w.Write([]byte(`all the 2 backends for the user "unauthorized" are unavailable`))
 			return
@@ -161,5 +164,11 @@ func TestDefaultQueryTimeoutCutsRetry(t *testing.T) {
 		if !res.IsError || !strings.Contains(text, "VL_QUERY_TIMEOUT=100ms") {
 			t.Errorf("%s: want timeout error, got %q", tool, text)
 		}
+	}
+	// An immediate 502 is a backend outage, not a timeout: keep upstream's error.
+	res := call(t, s, "hits", map[string]any{"query": "outage", "start": "1"})
+	text := res.Content[0].(mcp.TextContent).Text
+	if !res.IsError || strings.Contains(text, "VL_QUERY_TIMEOUT") || !strings.Contains(text, "backends") {
+		t.Errorf("immediate 502: want upstream error, got %q", text)
 	}
 }

@@ -68,13 +68,15 @@ func main() {
 	s := server.NewMCPServer(
 		"VictoriaLogs",
 		fmt.Sprintf("v%s (date: %s)", version, date),
+		// First middleware is outermost: the tool-call record also covers a
+		// panic that WithRecovery turns into an error.
+		server.WithToolHandlerMiddleware(tools.ReasonMiddleware),
 		server.WithRecovery(),
 		server.WithLogging(),
 		server.WithToolCapabilities(true),
 		server.WithResourceCapabilities(true, true),
 		server.WithPromptCapabilities(true),
 		server.WithHooks(combinedHooks),
-		server.WithToolHandlerMiddleware(tools.ReasonMiddleware),
 		server.WithInstructions(`
 You are Virtual Assistant, a tool for interacting with VictoriaLogs API and documentation in different tasks related to logs and observability.
 You use LogsQL language to query logs and get information from the logs stored in VictoriaLogs.
