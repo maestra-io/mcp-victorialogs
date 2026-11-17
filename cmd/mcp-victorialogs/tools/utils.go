@@ -2,11 +2,13 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/VictoriaMetrics/VictoriaLogs/lib/logstorage"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -134,35 +136,63 @@ func WithContour() mcp.ToolOption {
 }
 
 func GetTextBodyForRequest(req *http.Request, cfg *config.Config) *mcp.CallToolResult {
-	applyDefaultQueryTimeout(req, cfg)
+	d := applyDefaultQueryTimeout(req, cfg)
+	if d > 0 {
+		// A retrying balancer (vmauth) re-sends a query VictoriaLogs dropped on
+		// timeout to the next backend, doubling the wall time: stop waiting
+		// shortly after VictoriaLogs' own cut instead.
+		ctx, cancel := context.WithTimeout(req.Context(), d+queryTimeoutGrace)
+		defer cancel()
+		req = req.WithContext(ctx)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
+		if d > 0 && errors.Is(err, context.DeadlineExceeded) {
+			return queryTimeoutError(d, err.Error())
+		}
 		return mcp.NewToolResultError(fmt.Sprintf("failed to do request: %v", err))
 	}
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		if d > 0 && errors.Is(err, context.DeadlineExceeded) {
+			return queryTimeoutError(d, err.Error())
+		}
 		return mcp.NewToolResultError(fmt.Sprintf("failed to read response body: %v", err))
 	}
-	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
+		// vmauth answers 502 "all the N backends ... are unavailable" when every
+		// backend dropped the connection, which is how VictoriaLogs ends a
+		// timed-out non-query select.
+		if d > 0 && resp.StatusCode == http.StatusBadGateway && strings.Contains(string(body), "backends") {
+			return queryTimeoutError(d, string(body))
+		}
 		return mcp.NewToolResultError(fmt.Sprintf("unexpected response status code %v: %s", resp.StatusCode, string(body)))
 	}
 	return mcp.NewToolResultText(string(body))
 }
 
+// queryTimeoutGrace is how long past VL_QUERY_TIMEOUT the client still waits.
+var queryTimeoutGrace = 2 * time.Second
+
+func queryTimeoutError(d time.Duration, upstream string) *mcp.CallToolResult {
+	return mcp.NewToolResultError(fmt.Sprintf("VictoriaLogs query did not finish within VL_QUERY_TIMEOUT=%s: narrow _time or add filters (upstream: %s)", d, upstream))
+}
+
 // applyDefaultQueryTimeout adds VL_QUERY_TIMEOUT as the `timeout` query arg
 // (accepted by every VictoriaLogs querying API) to select requests that do
-// not carry one; an explicit per-call timeout wins.
-func applyDefaultQueryTimeout(req *http.Request, cfg *config.Config) {
+// not carry one, and returns it; an explicit per-call timeout wins (returns 0).
+func applyDefaultQueryTimeout(req *http.Request, cfg *config.Config) time.Duration {
 	if cfg == nil || cfg.QueryTimeout() <= 0 || !strings.Contains(req.URL.Path, "/select/") {
-		return
+		return 0
 	}
 	q := req.URL.Query()
 	if q.Has("timeout") {
-		return
+		return 0
 	}
 	q.Set("timeout", strconv.FormatFloat(cfg.QueryTimeout().Seconds(), 'f', -1, 64)+"s")
 	req.URL.RawQuery = q.Encode()
+	return cfg.QueryTimeout()
 }
 
 type ToolReqParamType interface {

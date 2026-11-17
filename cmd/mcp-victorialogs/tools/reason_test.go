@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -119,6 +121,45 @@ func TestDefaultQueryTimeout(t *testing.T) {
 	for i := range want {
 		if got[i] != want[i] {
 			t.Errorf("request %d: got %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+// A select that outlives VL_QUERY_TIMEOUT behind a retrying balancer must end
+// at timeout+grace with a timeout error, both when the connection hangs and
+// when vmauth answers 502 "all the N backends ... are unavailable".
+func TestDefaultQueryTimeoutCutsRetry(t *testing.T) {
+	old := queryTimeoutGrace
+	queryTimeoutGrace = 200 * time.Millisecond
+	defer func() { queryTimeoutGrace = old }()
+	vl := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/select/logsql/hits" {
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte(`all the 2 backends for the user "unauthorized" are unavailable`))
+			return
+		}
+		<-r.Context().Done() // hang like vmauth retrying on the second backend
+	}))
+	defer vl.Close()
+	t.Setenv("VL_INSTANCE_ENTRYPOINT", vl.URL)
+	t.Setenv("VL_QUERY_TIMEOUT", "100ms")
+	cfg, err := config.InitConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := server.NewMCPServer("t", "0")
+	RegisterToolStatsQuery(s, cfg)
+	RegisterToolHits(s, cfg)
+
+	for _, tool := range []string{"stats_query", "hits"} {
+		start := time.Now()
+		res := call(t, s, tool, map[string]any{"query": "*", "time": "1", "start": "1"})
+		if el := time.Since(start); el > 2*time.Second {
+			t.Errorf("%s: took %v, want ~300ms", tool, el)
+		}
+		text := res.Content[0].(mcp.TextContent).Text
+		if !res.IsError || !strings.Contains(text, "VL_QUERY_TIMEOUT=100ms") {
+			t.Errorf("%s: want timeout error, got %q", tool, text)
 		}
 	}
 }
