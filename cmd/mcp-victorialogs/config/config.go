@@ -20,6 +20,7 @@ type Config struct {
 	passthroughHeaders []string
 	disabledTools      map[string]bool
 	heartbeatInterval  time.Duration
+	queryTimeout       time.Duration
 	defaultTenantID    logstorage.TenantID
 
 	entryPointURL *url.URL
@@ -94,6 +95,21 @@ func InitConfig() (*Config, error) {
 		heartbeatInterval = interval
 	}
 
+	// VL_QUERY_TIMEOUT is sent as the `timeout` query arg on every select
+	// request that does not set its own, so VictoriaLogs cancels a heavy query
+	// before a fronting proxy cuts the call. Unset or 0 = no default.
+	var queryTimeout time.Duration
+	if v := os.Getenv("VL_QUERY_TIMEOUT"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse VL_QUERY_TIMEOUT: %w", err)
+		}
+		if d < 0 {
+			return nil, fmt.Errorf("VL_QUERY_TIMEOUT must be non-negative")
+		}
+		queryTimeout = d
+	}
+
 	logFormat := strings.ToLower(os.Getenv("MCP_LOG_FORMAT"))
 	if logFormat == "" {
 		logFormat = "text"
@@ -119,6 +135,7 @@ func InitConfig() (*Config, error) {
 		passthroughHeaders: passthroughHeaders,
 		disabledTools:      disabledToolsMap,
 		heartbeatInterval:  heartbeatInterval,
+		queryTimeout:       queryTimeout,
 		logFormat:          logFormat,
 		logLevel:           logLevel,
 		defaultTenantID:    logstorage.TenantID{AccountID: 0, ProjectID: 0},
@@ -264,6 +281,11 @@ func (c *Config) IsToolDisabled(toolName string) bool {
 
 func (c *Config) HeartbeatInterval() time.Duration {
 	return c.heartbeatInterval
+}
+
+// QueryTimeout is the default VictoriaLogs query timeout (0 = none).
+func (c *Config) QueryTimeout() time.Duration {
+	return c.queryTimeout
 }
 
 func (c *Config) CustomHeaders() map[string]string {

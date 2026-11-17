@@ -74,6 +74,7 @@ func main() {
 		server.WithResourceCapabilities(true, true),
 		server.WithPromptCapabilities(true),
 		server.WithHooks(combinedHooks),
+		server.WithToolHandlerMiddleware(tools.ReasonMiddleware),
 		server.WithInstructions(`
 You are Virtual Assistant, a tool for interacting with VictoriaLogs API and documentation in different tasks related to logs and observability.
 You use LogsQL language to query logs and get information from the logs stored in VictoriaLogs.
@@ -102,6 +103,7 @@ Try not to second guess information - if you don't know something or lack inform
 	tools.RegisterToolStreamFieldValues(s, c)
 	tools.RegisterToolDocumentation(s, c)
 	tools.RegisterToolContours(s, c)
+	tools.AddReasonToAllTools(s)
 
 	// Registering resources (only if documentation tool is not disabled)
 	if !c.IsToolDisabled(tools.ToolNameDocumentation) {

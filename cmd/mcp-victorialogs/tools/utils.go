@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/VictoriaMetrics/VictoriaLogs/lib/logstorage"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -132,7 +133,8 @@ func WithContour() mcp.ToolOption {
 	)
 }
 
-func GetTextBodyForRequest(req *http.Request, _ *config.Config) *mcp.CallToolResult {
+func GetTextBodyForRequest(req *http.Request, cfg *config.Config) *mcp.CallToolResult {
+	applyDefaultQueryTimeout(req, cfg)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to do request: %v", err))
@@ -146,6 +148,21 @@ func GetTextBodyForRequest(req *http.Request, _ *config.Config) *mcp.CallToolRes
 		return mcp.NewToolResultError(fmt.Sprintf("unexpected response status code %v: %s", resp.StatusCode, string(body)))
 	}
 	return mcp.NewToolResultText(string(body))
+}
+
+// applyDefaultQueryTimeout adds VL_QUERY_TIMEOUT as the `timeout` query arg
+// (accepted by every VictoriaLogs querying API) to select requests that do
+// not carry one; an explicit per-call timeout wins.
+func applyDefaultQueryTimeout(req *http.Request, cfg *config.Config) {
+	if cfg == nil || cfg.QueryTimeout() <= 0 || !strings.Contains(req.URL.Path, "/select/") {
+		return
+	}
+	q := req.URL.Query()
+	if q.Has("timeout") {
+		return
+	}
+	q.Set("timeout", strconv.FormatFloat(cfg.QueryTimeout().Seconds(), 'f', -1, 64)+"s")
+	req.URL.RawQuery = q.Encode()
 }
 
 type ToolReqParamType interface {
