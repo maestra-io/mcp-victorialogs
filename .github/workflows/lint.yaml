@@ -34,10 +34,19 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
+      # GitHub Releases through nora (packages.maestra.io): 3-day hold, issues-maestra#1649.
+      # Bump the version and the sha256 (the release's asset digest) together.
+      - name: golangci-lint through nora
+        uses: maestra-io/github-actions/nora-asset@bce883a9462ae1a0ec95b02ac797f223589ef7a5 # v1.115.0
+        with:
+          path: github/golangci/golangci-lint/releases/download/v2.11.4/golangci-lint-2.11.4-linux-amd64.tar.gz
+          sha256: 200c5b7503f67b59a6743ccf32133026c174e272b930ee79aa2aa6f37aca7ef1
+          bin: golangci-lint
+          member: golangci-lint-2.11.4-linux-amd64/golangci-lint
       - name: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.11
+          install-mode: none
 
       - name: Run lint
         run: make lint
